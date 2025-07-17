@@ -4,342 +4,437 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>API Maker Engine</title>
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="shortcut icon" href="/static/favicon.ico">
     <style>
         body {
             margin: 0;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #1f2937 0%, #111827 50%, #1f2937 100%);
+            min-height: 100vh;
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .loading-spinner {
+            border: 3px solid #374151;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
 </head>
 <body>
-    <div id="root"></div>
+    <div id="root">
+        <!-- Loading screen while React app loads -->
+        <div class="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
+            <div class="text-center">
+                <div class="loading-spinner mx-auto mb-4"></div>
+                <h1 class="text-2xl font-bold text-white mb-2">API Maker Engine</h1>
+                <p class="text-gray-400">Loading your workspace...</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- React App will be served here when built -->
+    <script>
+        // Check if the React build is available, otherwise show a message
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                const root = document.getElementById('root');
+                if (root.children.length === 1) {
+                    root.innerHTML = `
+                        <div class="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center p-4">
+                            <div class="text-center max-w-md">
+                                <div class="bg-blue-600 p-4 rounded-full inline-block mb-6">
+                                    <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                                    </svg>
+                                </div>
+                                <h1 class="text-3xl font-bold text-white mb-4">API Maker Engine</h1>
+                                <p class="text-gray-400 mb-6">Welcome! To start using the application, please build the React frontend:</p>
+                                <div class="bg-gray-800 rounded-lg p-4 text-left">
+                                    <code class="text-green-400 text-sm">
+                                        cd apiengine<br>
+                                        npm run build<br>
+                                        # Then restart the server
+                                    </code>
+                                </div>
+                                <p class="text-gray-500 text-sm mt-4">The React development server will integrate with the FastAPI backend.</p>
+                            </div>
+                        </div>
+                    `;
+                }
+            }, 3000);
+        });
+    </script>
+</body>
+</html>
     
     <script type="text/babel">
-        // This will load your ps.jsx component
-        const { useState, useEffect } = React;
+        // If the external file fails to load, fallback to inline version
+        window.addEventListener('error', function(e) {
+            if (e.filename && e.filename.includes('ps-updated.jsx')) {
+                console.log('Loading fallback inline component...');
+                // Inline fallback code would go here
+                loadFallbackComponent();
+            }
+        });
         
-        // Simple API client
-        class APIClient {
-            constructor(baseURL = '/api') {
-                this.baseURL = baseURL;
-                this.token = localStorage.getItem('api_token');
+        function loadFallbackComponent() {
+            const { useState, useEffect, useContext, createContext } = React;
+            const { 
+                Play, Save, Settings, Database, Code, Globe, Lock, DollarSign, Activity, 
+                Upload, Download, Plus, Trash2, Copy, Eye, EyeOff, Zap, Server, Users, 
+                BarChart3, FileText, Sparkles, LogOut, User, Home, TestTube, Shield, 
+                Clock, TrendingUp 
+            } = lucide;
+
+            // API Client
+            class APIClient {
+                constructor(baseURL = '/api') {
+                    this.baseURL = baseURL;
+                    this.token = localStorage.getItem('api_token');
+                }
+                
+                setToken(token) {
+                    this.token = token;
+                    localStorage.setItem('api_token', token);
+                }
+                
+                clearToken() {
+                    this.token = null;
+                    localStorage.removeItem('api_token');
+                }
+                
+                async request(endpoint, options = {}) {
+                    const headers = {
+                        'Content-Type': 'application/json',
+                        ...(options.headers || {})
+                    };
+                    
+                    if (this.token) {
+                        headers.Authorization = `Bearer ${this.token}`;
+                    }
+                    
+                    try {
+                        const response = await fetch(`${this.baseURL}${endpoint}`, {
+                            ...options,
+                            headers
+                        });
+                        
+                        if (!response.ok) {
+                            const error = await response.json().catch(() => ({ detail: 'Network error' }));
+                            throw new Error(error.detail || `HTTP ${response.status}`);
+                        }
+                        
+                        return response.json();
+                    } catch (error) {
+                        console.error('API Request failed:', error);
+                        throw error;
+                    }
+                }
+                
+                async get(endpoint) { return this.request(endpoint); }
+                async post(endpoint, data) { return this.request(endpoint, { method: 'POST', body: JSON.stringify(data) }); }
+                async put(endpoint, data) { return this.request(endpoint, { method: 'PUT', body: JSON.stringify(data) }); }
+                async delete(endpoint) { return this.request(endpoint, { method: 'DELETE' }); }
             }
-            
-            setToken(token) {
-                this.token = token;
-                localStorage.setItem('api_token', token);
-            }
-            
-            clearToken() {
-                this.token = null;
-                localStorage.removeItem('api_token');
-            }
-            
-            async request(endpoint, options = {}) {
-                const headers = {
-                    'Content-Type': 'application/json',
-                    ...(options.headers || {})
+
+            const apiClient = new APIClient();
+
+            // Auth Context
+            const AuthContext = createContext();
+
+            const AuthProvider = ({ children }) => {
+                const [user, setUser] = useState(null);
+                const [loading, setLoading] = useState(true);
+                
+                useEffect(() => {
+                    const checkAuth = async () => {
+                        try {
+                            if (apiClient.token) {
+                                const userData = await apiClient.get('/auth/me');
+                                setUser(userData);
+                            }
+                        } catch (error) {
+                            apiClient.clearToken();
+                        } finally {
+                            setLoading(false);
+                        }
+                    };
+                    checkAuth();
+                }, []);
+                
+                const login = async (username, password) => {
+                    const response = await apiClient.post('/auth/login', { username, password });
+                    apiClient.setToken(response.token);
+                    setUser(response.user);
+                    return response;
                 };
                 
-                if (this.token) {
-                    headers.Authorization = `Bearer ${this.token}`;
-                }
+                const register = async (username, email, password) => {
+                    const response = await apiClient.post('/auth/register', { username, email, password });
+                    apiClient.setToken(response.token);
+                    setUser(response.user);
+                    return response;
+                };
                 
-                const response = await fetch(`${this.baseURL}${endpoint}`, {
-                    ...options,
-                    headers
-                });
+                const logout = () => {
+                    apiClient.clearToken();
+                    setUser(null);
+                };
                 
-                if (!response.ok) {
-                    const error = await response.json().catch(() => ({ detail: 'Network error' }));
-                    throw new Error(error.detail || `HTTP ${response.status}`);
-                }
+                return React.createElement(AuthContext.Provider, { value: { user, login, register, logout, loading } }, children);
+            };
+
+            const useAuth = () => {
+                const context = useContext(AuthContext);
+                if (!context) throw new Error('useAuth must be used within AuthProvider');
+                return context;
+            };
+
+            // Login Component
+            const LoginForm = () => {
+                const [isLogin, setIsLogin] = useState(true);
+                const [username, setUsername] = useState('');
+                const [email, setEmail] = useState('');
+                const [password, setPassword] = useState('');
+                const [error, setError] = useState('');
+                const [loading, setLoading] = useState(false);
+                const { login, register } = useAuth();
                 
-                return response.json();
-            }
-            
-            async get(endpoint) {
-                return this.request(endpoint);
-            }
-            
-            async post(endpoint, data) {
-                return this.request(endpoint, {
-                    method: 'POST',
-                    body: JSON.stringify(data)
-                });
-            }
-            
-            async put(endpoint, data) {
-                return this.request(endpoint, {
-                    method: 'PUT',
-                    body: JSON.stringify(data)
-                });
-            }
-            
-            async delete(endpoint) {
-                return this.request(endpoint, {
-                    method: 'DELETE'
-                });
-            }
-        }
-        
-        const apiClient = new APIClient();
-        
-        // Simple auth context
-        const AuthContext = React.createContext();
-        
-        const AuthProvider = ({ children }) => {
-            const [user, setUser] = useState(null);
-            const [loading, setLoading] = useState(true);
-            
-            useEffect(() => {
-                // Check if user is logged in
-                const checkAuth = async () => {
+                const handleSubmit = async (e) => {
+                    e.preventDefault();
+                    setError('');
+                    setLoading(true);
+                    
                     try {
-                        if (apiClient.token) {
-                            const userData = await apiClient.get('/auth/me');
-                            setUser(userData);
+                        if (isLogin) {
+                            await login(username, password);
+                        } else {
+                            await register(username, email, password);
                         }
-                    } catch (error) {
-                        apiClient.clearToken();
+                    } catch (err) {
+                        setError(err.message);
                     } finally {
                         setLoading(false);
                     }
                 };
                 
-                checkAuth();
-            }, []);
-            
-            const login = async (username, password) => {
-                const response = await apiClient.post('/auth/login', { username, password });
-                apiClient.setToken(response.token);
-                setUser(response.user);
-                return response;
-            };
-            
-            const register = async (username, email, password) => {
-                const response = await apiClient.post('/auth/register', { username, email, password });
-                apiClient.setToken(response.token);
-                setUser(response.user);
-                return response;
-            };
-            
-            const logout = () => {
-                apiClient.clearToken();
-                setUser(null);
-            };
-            
-            return (
-                <AuthContext.Provider value={{ user, login, register, logout, loading }}>
-                    {children}
-                </AuthContext.Provider>
-            );
-        };
-        
-        const useAuth = () => {
-            const context = React.useContext(AuthContext);
-            if (!context) {
-                throw new Error('useAuth must be used within AuthProvider');
-            }
-            return context;
-        };
-        
-        // Login component
-        const LoginForm = () => {
-            const [isLogin, setIsLogin] = useState(true);
-            const [username, setUsername] = useState('');
-            const [email, setEmail] = useState('');
-            const [password, setPassword] = useState('');
-            const [error, setError] = useState('');
-            const [loading, setLoading] = useState(false);
-            const { login, register } = useAuth();
-            
-            const handleSubmit = async (e) => {
-                e.preventDefault();
-                setError('');
-                setLoading(true);
-                
-                try {
-                    if (isLogin) {
-                        await login(username, password);
-                    } else {
-                        await register(username, email, password);
-                    }
-                } catch (err) {
-                    setError(err.message);
-                } finally {
-                    setLoading(false);
-                }
-            };
-            
-            return (
-                <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
-                    <div className="bg-gray-800 p-8 rounded-xl border border-gray-700 w-full max-w-md">
-                        <h1 className="text-2xl font-bold text-white mb-6 text-center">
-                            {isLogin ? 'Login' : 'Register'} to API Maker Engine
-                        </h1>
-                        
-                        {error && (
-                            <div className="bg-red-900/50 border border-red-500 text-red-300 px-4 py-2 rounded mb-4">
-                                {error}
-                            </div>
-                        )}
-                        
-                        <form onSubmit={handleSubmit} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-2">Username</label>
-                                <input
-                                    type="text"
-                                    value={username}
-                                    onChange={(e) => setUsername(e.target.value)}
-                                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:border-blue-500 focus:outline-none text-white"
-                                    required
-                                />
-                            </div>
-                            
-                            {!isLogin && (
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-2">Email</label>
-                                    <input
-                                        type="email"
-                                        value={email}
-                                        onChange={(e) => setEmail(e.target.value)}
-                                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:border-blue-500 focus:outline-none text-white"
-                                    />
-                                </div>
-                            )}
-                            
-                            <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-2">Password</label>
-                                <input
-                                    type="password"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:border-blue-500 focus:outline-none text-white"
-                                    required
-                                />
-                            </div>
-                            
-                            <button
-                                type="submit"
-                                disabled={loading}
-                                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-2 px-4 rounded-lg transition-colors"
-                            >
-                                {loading ? 'Loading...' : (isLogin ? 'Login' : 'Register')}
-                            </button>
-                        </form>
-                        
-                        <div className="mt-4 text-center">
-                            <button
-                                onClick={() => setIsLogin(!isLogin)}
-                                className="text-blue-400 hover:text-blue-300 text-sm"
-                            >
-                                {isLogin ? 'Need an account? Register' : 'Already have an account? Login'}
-                            </button>
-                        </div>
-                        
-                        <div className="mt-6 text-center text-sm text-gray-400">
-                            <p>Demo credentials:</p>
-                            <p>Username: admin | Password: admin123</p>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-        
-        // Main App component
-        const App = () => {
-            const { user, loading } = useAuth();
-            
-            if (loading) {
-                return (
-                    <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-                        <div className="text-white text-xl">Loading...</div>
-                    </div>
+                return React.createElement('div', { className: 'min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center' },
+                    React.createElement('div', { className: 'bg-gray-800/50 backdrop-blur-sm p-8 rounded-xl border border-gray-700 w-full max-w-md fade-in' },
+                        React.createElement('div', { className: 'flex items-center justify-center mb-6' },
+                            React.createElement('div', { className: 'bg-gradient-to-r from-blue-500 to-purple-600 p-3 rounded-lg' },
+                                React.createElement(Zap, { className: 'text-white', size: 32 })
+                            )
+                        ),
+                        React.createElement('h1', { className: 'text-2xl font-bold text-white mb-2 text-center' }, 'API Maker Engine'),
+                        React.createElement('p', { className: 'text-gray-400 text-center mb-6' }, isLogin ? 'Welcome back!' : 'Create your account'),
+                        error && React.createElement('div', { className: 'bg-red-900/50 border border-red-500 text-red-300 px-4 py-2 rounded mb-4' }, error),
+                        React.createElement('form', { onSubmit: handleSubmit, className: 'space-y-4' },
+                            React.createElement('div', null,
+                                React.createElement('label', { className: 'block text-sm font-medium text-gray-300 mb-2' }, 'Username'),
+                                React.createElement('input', {
+                                    type: 'text',
+                                    value: username,
+                                    onChange: (e) => setUsername(e.target.value),
+                                    className: 'w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:border-blue-500 focus:outline-none text-white',
+                                    required: true
+                                })
+                            ),
+                            !isLogin && React.createElement('div', null,
+                                React.createElement('label', { className: 'block text-sm font-medium text-gray-300 mb-2' }, 'Email'),
+                                React.createElement('input', {
+                                    type: 'email',
+                                    value: email,
+                                    onChange: (e) => setEmail(e.target.value),
+                                    className: 'w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:border-blue-500 focus:outline-none text-white'
+                                })
+                            ),
+                            React.createElement('div', null,
+                                React.createElement('label', { className: 'block text-sm font-medium text-gray-300 mb-2' }, 'Password'),
+                                React.createElement('input', {
+                                    type: 'password',
+                                    value: password,
+                                    onChange: (e) => setPassword(e.target.value),
+                                    className: 'w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:border-blue-500 focus:outline-none text-white',
+                                    required: true
+                                })
+                            ),
+                            React.createElement('button', {
+                                type: 'submit',
+                                disabled: loading,
+                                className: 'w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 text-white font-medium py-2 px-4 rounded-lg transition-all'
+                            }, loading ? 'Loading...' : (isLogin ? 'Sign In' : 'Create Account'))
+                        ),
+                        React.createElement('div', { className: 'mt-4 text-center' },
+                            React.createElement('button', {
+                                onClick: () => setIsLogin(!isLogin),
+                                className: 'text-blue-400 hover:text-blue-300 text-sm'
+                            }, isLogin ? 'Need an account? Sign up' : 'Already have an account? Sign in')
+                        ),
+                        React.createElement('div', { className: 'mt-6 text-center text-sm text-gray-400 bg-gray-900/50 p-3 rounded' },
+                            React.createElement('p', { className: 'font-medium mb-1' }, 'Demo Credentials:'),
+                            React.createElement('p', null, 'Username: ', React.createElement('span', { className: 'font-mono' }, 'admin')),
+                            React.createElement('p', null, 'Password: ', React.createElement('span', { className: 'font-mono' }, 'admin123'))
+                        )
+                    )
                 );
-            }
-            
-            if (!user) {
-                return <LoginForm />;
-            }
-            
-            // Here you would load your main ps.jsx component
-            return (
-                <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white">
-                    <div className="p-6">
-                        <div className="max-w-7xl mx-auto">
-                            <div className="flex items-center justify-between mb-8">
-                                <div>
-                                    <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                                        Welcome to API Maker Engine
-                                    </h1>
-                                    <p className="text-gray-400">Hello, {user.username}! Build and deploy APIs instantly.</p>
-                                </div>
-                                <button
-                                    onClick={() => {
-                                        apiClient.clearToken();
-                                        window.location.reload();
-                                    }}
-                                    className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors"
-                                >
-                                    Logout
-                                </button>
-                            </div>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
-                                    <h3 className="text-xl font-semibold mb-4">API Builder</h3>
-                                    <p className="text-gray-400 mb-4">Create and deploy APIs with AI assistance</p>
-                                    <button className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors">
-                                        Start Building
-                                    </button>
-                                </div>
-                                
-                                <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
-                                    <h3 className="text-xl font-semibold mb-4">Analytics</h3>
-                                    <p className="text-gray-400 mb-4">Monitor your API performance and usage</p>
-                                    <button className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-colors">
-                                        View Analytics
-                                    </button>
-                                </div>
-                                
-                                <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
-                                    <h3 className="text-xl font-semibold mb-4">Documentation</h3>
-                                    <p className="text-gray-400 mb-4">Learn how to use the API Maker Engine</p>
-                                    <button className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg transition-colors">
-                                        Read Docs
-                                    </button>
-                                </div>
-                            </div>
-                            
-                            <div className="mt-8 bg-gray-800/50 p-6 rounded-xl border border-gray-700">
-                                <h3 className="text-xl font-semibold mb-4">Quick Start</h3>
-                                <ol className="list-decimal list-inside space-y-2 text-gray-300">
-                                    <li>Click "API Builder" to create your first API</li>
-                                    <li>Describe what you want your API to do using natural language</li>
-                                    <li>Let AI generate the code for you</li>
-                                    <li>Configure rate limits and authentication</li>
-                                    <li>Deploy and test your API instantly</li>
-                                </ol>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
+            };
+
+            // Simple Dashboard
+            const Dashboard = () => {
+                const { user, logout } = useAuth();
+                const [apis, setApis] = useState([]);
+                const [loading, setLoading] = useState(true);
+
+                useEffect(() => {
+                    loadApis();
+                }, []);
+
+                const loadApis = async () => {
+                    try {
+                        const data = await apiClient.get('/apis');
+                        setApis(data);
+                    } catch (error) {
+                        console.error('Failed to load APIs:', error);
+                    } finally {
+                        setLoading(false);
+                    }
+                };
+
+                return React.createElement('div', { className: 'min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white' },
+                    React.createElement('div', { className: 'bg-gray-800/50 backdrop-blur-sm border-b border-gray-700 sticky top-0 z-50' },
+                        React.createElement('div', { className: 'max-w-7xl mx-auto px-6 py-4' },
+                            React.createElement('div', { className: 'flex items-center justify-between' },
+                                React.createElement('div', { className: 'flex items-center gap-3' },
+                                    React.createElement('div', { className: 'bg-gradient-to-r from-blue-500 to-purple-600 p-2 rounded-lg' },
+                                        React.createElement(Zap, { className: 'text-white', size: 24 })
+                                    ),
+                                    React.createElement('div', null,
+                                        React.createElement('h1', { className: 'text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent' }, 'API Maker Engine'),
+                                        React.createElement('p', { className: 'text-sm text-gray-400' }, 'Create powerful APIs in seconds')
+                                    )
+                                ),
+                                React.createElement('div', { className: 'flex items-center gap-4' },
+                                    React.createElement('div', { className: 'flex items-center gap-2 text-sm text-gray-400' },
+                                        React.createElement(User, { size: 16 }),
+                                        React.createElement('span', null, `Welcome, ${user?.username}`)
+                                    ),
+                                    React.createElement('button', {
+                                        onClick: logout,
+                                        className: 'flex items-center gap-2 bg-red-600 hover:bg-red-700 px-3 py-2 rounded-lg font-medium transition-colors'
+                                    },
+                                        React.createElement(LogOut, { size: 16 }),
+                                        'Logout'
+                                    )
+                                )
+                            )
+                        )
+                    ),
+                    React.createElement('div', { className: 'max-w-7xl mx-auto p-6 fade-in' },
+                        React.createElement('div', { className: 'mb-8' },
+                            React.createElement('h2', { className: 'text-3xl font-bold mb-4' }, 'Welcome to API Maker Engine'),
+                            React.createElement('p', { className: 'text-gray-400 text-lg' }, 'Build, deploy, and manage APIs with AI assistance')
+                        ),
+                        React.createElement('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-6 mb-8' },
+                            React.createElement('div', { className: 'bg-gray-800/50 p-6 rounded-xl border border-gray-700 hover:border-blue-500 transition-colors' },
+                                React.createElement('div', { className: 'flex items-center gap-3 mb-4' },
+                                    React.createElement(Code, { className: 'text-blue-400', size: 24 }),
+                                    React.createElement('h3', { className: 'text-xl font-semibold' }, 'API Builder')
+                                ),
+                                React.createElement('p', { className: 'text-gray-400 mb-4' }, 'Create APIs using natural language descriptions and AI-powered code generation.'),
+                                React.createElement('button', { 
+                                    className: 'bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors w-full',
+                                    onClick: () => alert('API Builder coming soon! Use the main interface above.')
+                                }, 'Start Building')
+                            ),
+                            React.createElement('div', { className: 'bg-gray-800/50 p-6 rounded-xl border border-gray-700 hover:border-green-500 transition-colors' },
+                                React.createElement('div', { className: 'flex items-center gap-3 mb-4' },
+                                    React.createElement(BarChart3, { className: 'text-green-400', size: 24 }),
+                                    React.createElement('h3', { className: 'text-xl font-semibold' }, 'Analytics')
+                                ),
+                                React.createElement('p', { className: 'text-gray-400 mb-4' }, 'Monitor API performance, usage statistics, and user analytics.'),
+                                React.createElement('button', { 
+                                    className: 'bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-colors w-full',
+                                    onClick: () => alert('Analytics dashboard coming soon!')
+                                }, 'View Analytics')
+                            ),
+                            React.createElement('div', { className: 'bg-gray-800/50 p-6 rounded-xl border border-gray-700 hover:border-purple-500 transition-colors' },
+                                React.createElement('div', { className: 'flex items-center gap-3 mb-4' },
+                                    React.createElement(Server, { className: 'text-purple-400', size: 24 }),
+                                    React.createElement('h3', { className: 'text-xl font-semibold' }, 'My APIs')
+                                ),
+                                React.createElement('p', { className: 'text-gray-400 mb-4' }, `You have ${apis.length} API${apis.length !== 1 ? 's' : ''} created.`),
+                                React.createElement('button', { 
+                                    className: 'bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg transition-colors w-full'
+                                }, 'Manage APIs')
+                            )
+                        ),
+                        React.createElement('div', { className: 'bg-gray-800/50 p-6 rounded-xl border border-gray-700' },
+                            React.createElement('h3', { className: 'text-xl font-semibold mb-4' }, 'Quick Start Guide'),
+                            React.createElement('div', { className: 'grid grid-cols-1 md:grid-cols-2 gap-6' },
+                                React.createElement('div', null,
+                                    React.createElement('h4', { className: 'font-semibold mb-2 text-blue-400' }, '1. Describe Your API'),
+                                    React.createElement('p', { className: 'text-gray-400 text-sm' }, 'Use natural language to describe what you want your API to do. Our AI will understand and generate the code.')
+                                ),
+                                React.createElement('div', null,
+                                    React.createElement('h4', { className: 'font-semibold mb-2 text-green-400' }, '2. Configure & Deploy'),
+                                    React.createElement('p', { className: 'text-gray-400 text-sm' }, 'Set up authentication, rate limiting, and other settings. Deploy with one click to get your API live.')
+                                ),
+                                React.createElement('div', null,
+                                    React.createElement('h4', { className: 'font-semibold mb-2 text-purple-400' }, '3. Test & Monitor'),
+                                    React.createElement('p', { className: 'text-gray-400 text-sm' }, 'Use the built-in playground to test your API and monitor its performance in real-time.')
+                                ),
+                                React.createElement('div', null,
+                                    React.createElement('h4', { className: 'font-semibold mb-2 text-yellow-400' }, '4. Scale & Manage'),
+                                    React.createElement('p', { className: 'text-gray-400 text-sm' }, 'Manage multiple APIs, track usage, and scale automatically based on demand.')
+                                )
+                            )
+                        )
+                    )
+                );
+            };
+
+            // Main App
+            const App = () => {
+                const { user, loading } = useAuth();
+                
+                if (loading) {
+                    return React.createElement('div', { className: 'min-h-screen bg-gray-900 flex items-center justify-center' },
+                        React.createElement('div', { className: 'text-center' },
+                            React.createElement('div', { className: 'animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4' }),
+                            React.createElement('div', { className: 'text-white text-xl' }, 'Loading API Maker Engine...')
+                        )
+                    );
+                }
+                
+                return user ? React.createElement(Dashboard) : React.createElement(LoginForm);
+            };
+
+            // Render
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(React.createElement(AuthProvider, null, React.createElement(App)));
+        }
         
-        // Render the app
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(
-            <AuthProvider>
-                <App />
-            </AuthProvider>
-        );
+        // Try to load the full component, fallback to simplified version
+        setTimeout(() => {
+            if (!window.APIMakerEngineApp) {
+                console.log('Full component not found, loading fallback...');
+                loadFallbackComponent();
+            }
+        }, 1000);
     </script>
 </body>
 </html>

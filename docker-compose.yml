@@ -9,16 +9,26 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - DOCKER_ENV=true
       - JWT_SECRET=${JWT_SECRET:-your-secret-key-change-in-production}
+      - REDIS_URL=redis://redis:6379
     volumes:
       - ./data:/app/data
+      # For Rancher Desktop on macOS, use the socket path directly
       - /var/run/docker.sock:/var/run/docker.sock
       - ./templates:/app/templates
       - ./static:/app/static
+      # Add shared volume for better performance on macOS
+      - api_maker_cache:/app/.cache
     depends_on:
       - redis
     restart: unless-stopped
     networks:
       - api-maker-network
+    # Add resource limits for better Rancher Desktop compatibility
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
 
   redis:
     image: redis:7-alpine
@@ -29,12 +39,47 @@ services:
     restart: unless-stopped
     networks:
       - api-maker-network
-    command: redis-server --appendonly yes
+    # Optimize Redis for Rancher Desktop
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.25'
+
+  # Optional: Add a lightweight development proxy for hot-reload
+  frontend-dev:
+    image: node:18-alpine
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apiengine:/app
+      - node_modules_cache:/app/node_modules
+    command: sh -c "npm install && npm start"
+    environment:
+      - REACT_APP_API_BASE_URL=http://localhost:8000
+      - REACT_APP_API_ENDPOINT=/api
+    networks:
+      - api-maker-network
+    profiles:
+      - dev
+    depends_on:
+      - api-maker
 
 networks:
   api-maker-network:
     driver: bridge
+    # Add custom network configuration for better Rancher Desktop performance
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
 
 volumes:
   redis_data:
+    driver: local
+  api_maker_cache:
+    driver: local
+  node_modules_cache:
+    driver: local
 

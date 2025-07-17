@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import LoginForm from '../components/LoginForm';
 import { 
   Play, 
   Save, 
@@ -21,7 +23,13 @@ import {
   Users,
   BarChart3,
   FileText,
-  Sparkles
+  Sparkles,
+  LogOut,
+  User,
+  Shield,
+  Clock,
+  TrendingUp,
+  TestTube
 } from 'lucide-react';
 
 const APICodeEditor = ({ code, onChange, language }) => (
@@ -145,6 +153,7 @@ const APIParameterBuilder = ({ parameters, setParameters }) => {
 };
 
 const APIMakerEngine = () => {
+  const { user, logout, apiClient } = useAuth();
   const [activeTab, setActiveTab] = useState('builder');
   const [apiName, setApiName] = useState('');
   const [endpoint, setEndpoint] = useState('');
@@ -160,6 +169,61 @@ const APIMakerEngine = () => {
   const [deployedApis, setDeployedApis] = useState([]);
   const [prompt, setPrompt] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
+  const [analytics, setAnalytics] = useState({
+    totalRequests: 0,
+    revenue: 0,
+    avgResponseTime: 0
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  // Fetch user's APIs on component mount
+  useEffect(() => {
+    if (user) {
+      fetchUserApis();
+      fetchAnalytics();
+    }
+  }, [user]);
+
+  const fetchUserApis = async () => {
+    try {
+      setLoading(true);
+      const apis = await apiClient.get('/apis');
+      setDeployedApis(apis);
+    } catch (error) {
+      setError('Failed to fetch APIs: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAnalytics = async () => {
+    try {
+      const data = await apiClient.get('/analytics');
+      setAnalytics(data);
+    } catch (error) {
+      console.error('Failed to fetch analytics:', error);
+    }
+  };
+
+  const deleteApi = async (apiId) => {
+    if (!window.confirm('Are you sure you want to delete this API?')) return;
+    
+    try {
+      await apiClient.delete(`/apis/${apiId}`);
+      setDeployedApis(deployedApis.filter(api => api.id !== apiId));
+      alert('API deleted successfully');
+    } catch (error) {
+      setError('Failed to delete API: ' + error.message);
+    }
+  };
+
+  const generateApiKey = () => {
+
+  // If user is not authenticated, show login form
+  if (!user) {
+    return <LoginForm />;
+  }
 
   const generateApiKey = () => {
     const key = 'ak_' + Math.random().toString(36).substr(2, 32);
@@ -167,68 +231,114 @@ const APIMakerEngine = () => {
   };
 
   const runCode = async () => {
+    if (!code.trim()) {
+      setError('Please enter some code to test');
+      return;
+    }
+
     setIsRunning(true);
-    // Simulate code execution
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setIsRunning(false);
-    alert('Code executed successfully! Ready to deploy.');
+    setError('');
+    
+    try {
+      const result = await apiClient.post('/apis/test', {
+        code,
+        language,
+        parameters
+      });
+      
+      alert(`Code executed successfully!\nOutput: ${result.output || 'No output'}`);
+    } catch (error) {
+      setError('Code execution failed: ' + error.message);
+    } finally {
+      setIsRunning(false);
+    }
   };
 
-  const deployApi = () => {
-    const newApi = {
-      id: Date.now(),
-      name: apiName,
-      endpoint: `https://api.yourplatform.com/${endpoint}`,
-      language,
-      isPublic,
-      requests: 0,
-      status: 'active',
-      createdAt: new Date().toISOString()
-    };
-    setDeployedApis([...deployedApis, newApi]);
-    alert(`API deployed successfully! Available at: ${newApi.endpoint}`);
+  const deployApi = async () => {
+    if (!apiName || !endpoint || !code) {
+      setError('Please fill in all required fields');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    
+    try {
+      const newApi = await apiClient.post('/apis', {
+        name: apiName,
+        endpoint,
+        description,
+        code,
+        language,
+        parameters,
+        is_public: isPublic,
+        rate_limit: rateLimit,
+        pricing
+      });
+      
+      setDeployedApis([...deployedApis, newApi]);
+      
+      // Reset form
+      setApiName('');
+      setEndpoint('');
+      setDescription('');
+      setCode('');
+      setParameters([]);
+      
+      alert(`API deployed successfully! Available at: ${newApi.endpoint}`);
+      setActiveTab('apis');
+    } catch (error) {
+      setError('Deployment failed: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const generateFromPrompt = async () => {
-    if (!prompt.trim()) return;
-    
-    setIsRunning(true);
-    // Simulate GPT API call
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    
-    // Mock generated code based on prompt
-    const generatedCode = `# Generated API code based on your prompt
-# "${prompt}"
-
-from flask import Flask, request, jsonify
-import json
-
-app = Flask(__name__)
-
-@app.route('/api/${endpoint || 'generated'}', methods=['POST'])
-def handle_request():
-    data = request.get_json()
-    
-    # Your custom logic here
-    result = {
-        "status": "success",
-        "message": "API processed successfully",
-        "data": data
+    if (!prompt.trim()) {
+      setError('Please enter a description for your API');
+      return;
     }
     
-    return jsonify(result)
-
-if __name__ == '__main__':
-    app.run(debug=True)`;
+    setIsRunning(true);
+    setError('');
     
-    setCode(generatedCode);
-    setIsRunning(false);
+    try {
+      const result = await apiClient.post('/apis/generate', {
+        prompt,
+        language
+      });
+      
+      setCode(result.code);
+      if (result.suggested_name) setApiName(result.suggested_name);
+      if (result.suggested_endpoint) setEndpoint(result.suggested_endpoint);
+      if (result.description) setDescription(result.description);
+      if (result.parameters) setParameters(result.parameters);
+      
+    } catch (error) {
+      setError('Code generation failed: ' + error.message);
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const deleteApi = async (apiId) => {
+    if (!confirm('Are you sure you want to delete this API?')) return;
+    
+    try {
+      await apiClient.delete(`/apis/${apiId}`);
+      setDeployedApis(deployedApis.filter(api => api.id !== apiId));
+      alert('API deleted successfully');
+    } catch (error) {
+      setError('Failed to delete API: ' + error.message);
+    }
   };
 
   const tabs = [
     { id: 'builder', label: 'API Builder', icon: Code },
     { id: 'config', label: 'Configuration', icon: Settings },
     { id: 'data', label: 'Data Manager', icon: Database },
+    { id: 'test', label: 'API Testing', icon: TestTube },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'apis', label: 'My APIs', icon: Server }
   ];
@@ -251,11 +361,19 @@ if __name__ == '__main__':
               </div>
             </div>
             <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 text-sm text-gray-400">
+                <User size={16} />
+                <span>Welcome, {user?.username || 'User'}</span>
+              </div>
               <div className="text-sm text-gray-400">
                 <span className="text-green-400">●</span> Online
               </div>
-              <button className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg font-medium transition-colors">
-                Upgrade Pro
+              <button 
+                onClick={logout}
+                className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+              >
+                <LogOut size={16} />
+                Logout
               </button>
             </div>
           </div>
@@ -264,6 +382,19 @@ if __name__ == '__main__':
 
       {/* Navigation */}
       <div className="max-w-7xl mx-auto px-6 py-6">
+        {/* Error Display */}
+        {error && (
+          <div className="bg-red-900/50 border border-red-500/50 rounded-lg p-4 mb-6 text-red-400">
+            {error}
+            <button 
+              onClick={() => setError('')}
+              className="float-right text-red-300 hover:text-red-100"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
         <div className="flex space-x-1 bg-gray-800/50 p-1 rounded-lg mb-8">
           {tabs.map((tab) => (
             <button
@@ -394,11 +525,15 @@ if __name__ == '__main__':
                 <div className="space-y-3">
                   <button
                     onClick={deployApi}
-                    disabled={!apiName || !endpoint || !code}
+                    disabled={!apiName || !endpoint || !code || loading}
                     className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
                   >
-                    <Server size={16} />
-                    Deploy API
+                    {loading ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    ) : (
+                      <Server size={16} />
+                    )}
+                    {loading ? 'Deploying...' : 'Deploy API'}
                   </button>
                   <button className="w-full bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2">
                     <Save size={16} />
@@ -596,6 +731,93 @@ if __name__ == '__main__':
           </div>
         )}
 
+        {/* API Testing Tab */}
+        {activeTab === 'test' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="space-y-6">
+              <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700">
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <TestTube size={20} />
+                  API Testing Playground
+                </h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Select API to Test
+                    </label>
+                    <select className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:border-blue-500 focus:outline-none text-white">
+                      <option value="">Choose an API...</option>
+                      {deployedApis.map(api => (
+                        <option key={api.id} value={api.id}>{api.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Request Method
+                    </label>
+                    <select className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:border-blue-500 focus:outline-none text-white">
+                      <option value="GET">GET</option>
+                      <option value="POST">POST</option>
+                      <option value="PUT">PUT</option>
+                      <option value="DELETE">DELETE</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Request Body (JSON)
+                    </label>
+                    <textarea
+                      placeholder='{"key": "value"}'
+                      className="w-full h-32 bg-gray-900 border border-gray-700 rounded-lg p-3 focus:border-blue-500 focus:outline-none resize-none font-mono text-sm"
+                    />
+                  </div>
+
+                  <button className="w-full bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2">
+                    <Play size={16} />
+                    Send Request
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700">
+                <h3 className="text-lg font-semibold mb-4">Response</h3>
+                <div className="bg-gray-900 rounded-lg p-4 h-64 overflow-auto">
+                  <pre className="text-green-400 font-mono text-sm">
+                    {`{
+  "status": "success",
+  "message": "Test your APIs here",
+  "timestamp": "${new Date().toISOString()}"
+}`}
+                  </pre>
+                </div>
+              </div>
+
+              <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700">
+                <h3 className="text-lg font-semibold mb-4">Request Info</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Status:</span>
+                    <span className="text-green-400">200 OK</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Response Time:</span>
+                    <span className="text-white">142ms</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Content-Type:</span>
+                    <span className="text-white">application/json</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* My APIs Tab */}
         {activeTab === 'apis' && (
           <div>
@@ -618,7 +840,7 @@ if __name__ == '__main__':
                     <div className={`px-2 py-1 rounded text-xs font-medium ${
                       api.status === 'active' ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'
                     }`}>
-                      {api.status}
+                      {api.status || 'active'}
                     </div>
                   </div>
                   
@@ -629,20 +851,33 @@ if __name__ == '__main__':
                     </div>
                     <div className="flex items-center gap-2 text-sm text-gray-400">
                       <Users size={14} />
-                      <span>{api.requests} requests</span>
+                      <span>{api.requests || 0} requests</span>
                     </div>
                     <div className="flex items-center gap-2 text-sm text-gray-400">
                       <Code size={14} />
                       <span className="capitalize">{api.language}</span>
                     </div>
+                    <div className="flex items-center gap-2 text-sm text-gray-400">
+                      <Shield size={14} />
+                      <span>{api.is_public ? 'Public' : 'Private'}</span>
+                    </div>
                   </div>
                   
                   <div className="flex gap-2 mt-4">
-                    <button className="flex-1 bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded text-sm transition-colors">
-                      View
+                    <button 
+                      onClick={() => setActiveTab('test')}
+                      className="flex-1 bg-green-600 hover:bg-green-700 px-3 py-2 rounded text-sm transition-colors"
+                    >
+                      Test
                     </button>
                     <button className="flex-1 bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded text-sm transition-colors">
                       Edit
+                    </button>
+                    <button 
+                      onClick={() => deleteApi(api.id)}
+                      className="bg-red-600 hover:bg-red-700 px-3 py-2 rounded text-sm transition-colors"
+                    >
+                      <Trash2 size={14} />
                     </button>
                   </div>
                 </div>
@@ -754,7 +989,7 @@ if __name__ == '__main__':
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-400">Total Requests</p>
-                    <p className="text-2xl font-bold text-white">12,847</p>
+                    <p className="text-2xl font-bold text-white">{analytics.totalRequests.toLocaleString()}</p>
                   </div>
                   <div className="bg-blue-600/20 p-3 rounded-lg">
                     <BarChart3 className="text-blue-400" size={24} />
@@ -784,7 +1019,7 @@ if __name__ == '__main__':
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-400">Revenue</p>
-                    <p className="text-2xl font-bold text-white">$89.34</p>
+                    <p className="text-2xl font-bold text-white">${analytics.revenue.toFixed(2)}</p>
                   </div>
                   <div className="bg-purple-600/20 p-3 rounded-lg">
                     <DollarSign className="text-purple-400" size={24} />
@@ -799,7 +1034,7 @@ if __name__ == '__main__':
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-400">Avg Response Time</p>
-                    <p className="text-2xl font-bold text-white">142ms</p>
+                    <p className="text-2xl font-bold text-white">{analytics.avgResponseTime}ms</p>
                   </div>
                   <div className="bg-yellow-600/20 p-3 rounded-lg">
                     <Activity className="text-yellow-400" size={24} />
