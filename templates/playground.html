@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Playground - {{ api.name }}</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        
+        const APIPlayground = () => {
+            const [method, setMethod] = useState('POST');
+            const [headers, setHeaders] = useState('{\n  "Content-Type": "application/json"\n}');
+            const [body, setBody] = useState('{}');
+            const [queryParams, setQueryParams] = useState('');
+            const [response, setResponse] = useState(null);
+            const [loading, setLoading] = useState(false);
+            
+            const apiData = {{ api | tojson }};
+            const parameters = {{ parameters | tojson }};
+            
+            const sendRequest = async () => {
+                setLoading(true);
+                setResponse(null);
+                
+                try {
+                    const parsedHeaders = JSON.parse(headers);
+                    const parsedBody = body ? JSON.parse(body) : null;
+                    const parsedQuery = queryParams ? Object.fromEntries(new URLSearchParams(queryParams)) : {};
+                    
+                    const testResponse = await fetch(`/api/apis/${apiData.id}/test`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${localStorage.getItem('api_token')}`
+                        },
+                        body: JSON.stringify({
+                            method: method,
+                            headers: parsedHeaders,
+                            body: parsedBody,
+                            query_params: parsedQuery
+                        })
+                    });
+                    
+                    const result = await testResponse.json();
+                    setResponse(result);
+                } catch (error) {
+                    setResponse({
+                        error: error.message,
+                        status_code: 500
+                    });
+                } finally {
+                    setLoading(false);
+                }
+            };
+            
+            const generateSampleBody = () => {
+                const sample = {};
+                parameters.forEach(param => {
+                    switch (param.type) {
+                        case 'string':
+                            sample[param.name] = 'example_string';
+                            break;
+                        case 'number':
+                            sample[param.name] = 123;
+                            break;
+                        case 'boolean':
+                            sample[param.name] = true;
+                            break;
+                        case 'array':
+                            sample[param.name] = ['item1', 'item2'];
+                            break;
+                        case 'object':
+                            sample[param.name] = { key: 'value' };
+                            break;
+                        default:
+                            sample[param.name] = 'example_value';
+                    }
+                });
+                setBody(JSON.stringify(sample, null, 2));
+            };
+            
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white">
+                    <div className="max-w-7xl mx-auto p-6">
+                        <div className="mb-8">
+                            <h1 className="text-3xl font-bold mb-2">API Playground</h1>
+                            <div className="flex items-center gap-4 text-gray-400">
+                                <span className="font-medium">{apiData.name}</span>
+                                <span>•</span>
+                                <span className="font-mono text-sm">/api/execute/{apiData.endpoint}</span>
+                                <span>•</span>
+                                <span className={`px-2 py-1 rounded text-xs ${
+                                    apiData.status === 'deployed' ? 'bg-green-900 text-green-300' : 'bg-yellow-900 text-yellow-300'
+                                }`}>
+                                    {apiData.status}
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            {/* Request Panel */}
+                            <div className="space-y-6">
+                                <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
+                                    <h2 className="text-xl font-semibold mb-4">Request</h2>
+                                    
+                                    <div className="space-y-4">
+                                        {/* Method */}
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-300 mb-2">Method</label>
+                                            <select
+                                                value={method}
+                                                onChange={(e) => setMethod(e.target.value)}
+                                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:border-blue-500 focus:outline-none text-white"
+                                            >
+                                                <option value="GET">GET</option>
+                                                <option value="POST">POST</option>
+                                                <option value="PUT">PUT</option>
+                                                <option value="DELETE">DELETE</option>
+                                            </select>
+                                        </div>
+                                        
+                                        {/* Headers */}
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-300 mb-2">Headers (JSON)</label>
+                                            <textarea
+                                                value={headers}
+                                                onChange={(e) => setHeaders(e.target.value)}
+                                                className="w-full h-24 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:border-blue-500 focus:outline-none text-white font-mono text-sm"
+                                                placeholder='{"Content-Type": "application/json"}'
+                                            />
+                                        </div>
+                                        
+                                        {/* Query Parameters */}
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-300 mb-2">Query Parameters</label>
+                                            <input
+                                                type="text"
+                                                value={queryParams}
+                                                onChange={(e) => setQueryParams(e.target.value)}
+                                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:border-blue-500 focus:outline-none text-white font-mono text-sm"
+                                                placeholder="param1=value1&param2=value2"
+                                            />
+                                        </div>
+                                        
+                                        {/* Body */}
+                                        <div>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <label className="block text-sm font-medium text-gray-300">Body (JSON)</label>
+                                                <button
+                                                    onClick={generateSampleBody}
+                                                    className="text-sm text-blue-400 hover:text-blue-300"
+                                                >
+                                                    Generate Sample
+                                                </button>
+                                            </div>
+                                            <textarea
+                                                value={body}
+                                                onChange={(e) => setBody(e.target.value)}
+                                                className="w-full h-32 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:border-blue-500 focus:outline-none text-white font-mono text-sm"
+                                                placeholder="{}"
+                                            />
+                                        </div>
+                                        
+                                        {/* Send Button */}
+                                        <button
+                                            onClick={sendRequest}
+                                            disabled={loading || apiData.status !== 'deployed'}
+                                            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+                                        >
+                                            {loading ? (
+                                                <>
+                                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                                    Sending Request...
+                                                </>
+                                            ) : (
+                                                'Send Request'
+                                            )}
+                                        </button>
+                                        
+                                        {apiData.status !== 'deployed' && (
+                                            <p className="text-yellow-400 text-sm text-center">
+                                                API must be deployed to test
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                                
+                                {/* API Parameters */}
+                                {parameters.length > 0 && (
+                                    <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
+                                        <h3 className="text-lg font-semibold mb-4">Expected Parameters</h3>
+                                        <div className="space-y-3">
+                                            {parameters.map((param, index) => (
+                                                <div key={index} className="bg-gray-700/50 p-3 rounded-lg">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <span className="font-medium">{param.name}</span>
+                                                        <span className="text-xs bg-blue-600 px-2 py-1 rounded">{param.type}</span>
+                                                        {param.required && (
+                                                            <span className="text-xs bg-red-600 px-2 py-1 rounded">Required</span>
+                                                        )}
+                                                    </div>
+                                                    {param.description && (
+                                                        <p className="text-sm text-gray-400">{param.description}</p>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            
+                            {/* Response Panel */}
+                            <div className="space-y-6">
+                                <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
+                                    <h2 className="text-xl font-semibold mb-4">Response</h2>
+                                    
+                                    {!response ? (
+                                        <div className="text-center py-12 text-gray-400">
+                                            <div className="text-6xl mb-4">📡</div>
+                                            <p>Send a request to see the response</p>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            {/* Status Code */}
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm text-gray-400">Status:</span>
+                                                <span className={`px-2 py-1 rounded text-sm font-medium ${
+                                                    response.status_code >= 200 && response.status_code < 300
+                                                        ? 'bg-green-900 text-green-300'
+                                                        : response.status_code >= 400
+                                                        ? 'bg-red-900 text-red-300'
+                                                        : 'bg-yellow-900 text-yellow-300'
+                                                }`}>
+                                                    {response.status_code}
+                                                </span>
+                                                {response.response_time && (
+                                                    <>
+                                                        <span className="text-sm text-gray-400 ml-4">Time:</span>
+                                                        <span className="text-sm text-green-400">{(response.response_time * 1000).toFixed(2)}ms</span>
+                                                    </>
+                                                )}
+                                            </div>
+                                            
+                                            {/* Headers */}
+                                            {response.headers && (
+                                                <div>
+                                                    <h4 className="text-sm font-medium text-gray-300 mb-2">Response Headers</h4>
+                                                    <pre className="bg-gray-900 p-3 rounded text-xs text-gray-300 overflow-x-auto">
+                                                        {JSON.stringify(response.headers, null, 2)}
+                                                    </pre>
+                                                </div>
+                                            )}
+                                            
+                                            {/* Response Body */}
+                                            <div>
+                                                <h4 className="text-sm font-medium text-gray-300 mb-2">Response Body</h4>
+                                                <pre className="bg-gray-900 p-3 rounded text-sm text-gray-300 overflow-x-auto max-h-96 overflow-y-auto">
+                                                    {response.error ? response.error : 
+                                                     response.json ? JSON.stringify(response.json, null, 2) : 
+                                                     response.response || 'No response body'}
+                                                </pre>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                {/* API Info */}
+                                <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
+                                    <h3 className="text-lg font-semibold mb-4">API Information</h3>
+                                    <div className="space-y-2 text-sm">
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-400">Language:</span>
+                                            <span className="capitalize">{apiData.language}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-400">Rate Limit:</span>
+                                            <span>{apiData.rate_limit_requests} per {apiData.rate_limit_period}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-400">Authentication:</span>
+                                            <span>{apiData.is_public ? 'Public' : 'API Key Required'}</span>
+                                        </div>
+                                        {!apiData.is_public && apiData.api_key && (
+                                            <div className="flex justify-between">
+                                                <span className="text-gray-400">API Key:</span>
+                                                <span className="font-mono text-xs bg-gray-700 px-2 py-1 rounded">
+                                                    {apiData.api_key}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+        
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<APIPlayground />);
+    </script>
+</body>
+</html>

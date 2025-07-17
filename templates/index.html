@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Maker Engine</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        // This will load your ps.jsx component
+        const { useState, useEffect } = React;
+        
+        // Simple API client
+        class APIClient {
+            constructor(baseURL = '/api') {
+                this.baseURL = baseURL;
+                this.token = localStorage.getItem('api_token');
+            }
+            
+            setToken(token) {
+                this.token = token;
+                localStorage.setItem('api_token', token);
+            }
+            
+            clearToken() {
+                this.token = null;
+                localStorage.removeItem('api_token');
+            }
+            
+            async request(endpoint, options = {}) {
+                const headers = {
+                    'Content-Type': 'application/json',
+                    ...(options.headers || {})
+                };
+                
+                if (this.token) {
+                    headers.Authorization = `Bearer ${this.token}`;
+                }
+                
+                const response = await fetch(`${this.baseURL}${endpoint}`, {
+                    ...options,
+                    headers
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({ detail: 'Network error' }));
+                    throw new Error(error.detail || `HTTP ${response.status}`);
+                }
+                
+                return response.json();
+            }
+            
+            async get(endpoint) {
+                return this.request(endpoint);
+            }
+            
+            async post(endpoint, data) {
+                return this.request(endpoint, {
+                    method: 'POST',
+                    body: JSON.stringify(data)
+                });
+            }
+            
+            async put(endpoint, data) {
+                return this.request(endpoint, {
+                    method: 'PUT',
+                    body: JSON.stringify(data)
+                });
+            }
+            
+            async delete(endpoint) {
+                return this.request(endpoint, {
+                    method: 'DELETE'
+                });
+            }
+        }
+        
+        const apiClient = new APIClient();
+        
+        // Simple auth context
+        const AuthContext = React.createContext();
+        
+        const AuthProvider = ({ children }) => {
+            const [user, setUser] = useState(null);
+            const [loading, setLoading] = useState(true);
+            
+            useEffect(() => {
+                // Check if user is logged in
+                const checkAuth = async () => {
+                    try {
+                        if (apiClient.token) {
+                            const userData = await apiClient.get('/auth/me');
+                            setUser(userData);
+                        }
+                    } catch (error) {
+                        apiClient.clearToken();
+                    } finally {
+                        setLoading(false);
+                    }
+                };
+                
+                checkAuth();
+            }, []);
+            
+            const login = async (username, password) => {
+                const response = await apiClient.post('/auth/login', { username, password });
+                apiClient.setToken(response.token);
+                setUser(response.user);
+                return response;
+            };
+            
+            const register = async (username, email, password) => {
+                const response = await apiClient.post('/auth/register', { username, email, password });
+                apiClient.setToken(response.token);
+                setUser(response.user);
+                return response;
+            };
+            
+            const logout = () => {
+                apiClient.clearToken();
+                setUser(null);
+            };
+            
+            return (
+                <AuthContext.Provider value={{ user, login, register, logout, loading }}>
+                    {children}
+                </AuthContext.Provider>
+            );
+        };
+        
+        const useAuth = () => {
+            const context = React.useContext(AuthContext);
+            if (!context) {
+                throw new Error('useAuth must be used within AuthProvider');
+            }
+            return context;
+        };
+        
+        // Login component
+        const LoginForm = () => {
+            const [isLogin, setIsLogin] = useState(true);
+            const [username, setUsername] = useState('');
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [error, setError] = useState('');
+            const [loading, setLoading] = useState(false);
+            const { login, register } = useAuth();
+            
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setError('');
+                setLoading(true);
+                
+                try {
+                    if (isLogin) {
+                        await login(username, password);
+                    } else {
+                        await register(username, email, password);
+                    }
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+            
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
+                    <div className="bg-gray-800 p-8 rounded-xl border border-gray-700 w-full max-w-md">
+                        <h1 className="text-2xl font-bold text-white mb-6 text-center">
+                            {isLogin ? 'Login' : 'Register'} to API Maker Engine
+                        </h1>
+                        
+                        {error && (
+                            <div className="bg-red-900/50 border border-red-500 text-red-300 px-4 py-2 rounded mb-4">
+                                {error}
+                            </div>
+                        )}
+                        
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-2">Username</label>
+                                <input
+                                    type="text"
+                                    value={username}
+                                    onChange={(e) => setUsername(e.target.value)}
+                                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:border-blue-500 focus:outline-none text-white"
+                                    required
+                                />
+                            </div>
+                            
+                            {!isLogin && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-2">Email</label>
+                                    <input
+                                        type="email"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:border-blue-500 focus:outline-none text-white"
+                                    />
+                                </div>
+                            )}
+                            
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-2">Password</label>
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:border-blue-500 focus:outline-none text-white"
+                                    required
+                                />
+                            </div>
+                            
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                            >
+                                {loading ? 'Loading...' : (isLogin ? 'Login' : 'Register')}
+                            </button>
+                        </form>
+                        
+                        <div className="mt-4 text-center">
+                            <button
+                                onClick={() => setIsLogin(!isLogin)}
+                                className="text-blue-400 hover:text-blue-300 text-sm"
+                            >
+                                {isLogin ? 'Need an account? Register' : 'Already have an account? Login'}
+                            </button>
+                        </div>
+                        
+                        <div className="mt-6 text-center text-sm text-gray-400">
+                            <p>Demo credentials:</p>
+                            <p>Username: admin | Password: admin123</p>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+        
+        // Main App component
+        const App = () => {
+            const { user, loading } = useAuth();
+            
+            if (loading) {
+                return (
+                    <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+                        <div className="text-white text-xl">Loading...</div>
+                    </div>
+                );
+            }
+            
+            if (!user) {
+                return <LoginForm />;
+            }
+            
+            // Here you would load your main ps.jsx component
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white">
+                    <div className="p-6">
+                        <div className="max-w-7xl mx-auto">
+                            <div className="flex items-center justify-between mb-8">
+                                <div>
+                                    <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                                        Welcome to API Maker Engine
+                                    </h1>
+                                    <p className="text-gray-400">Hello, {user.username}! Build and deploy APIs instantly.</p>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        apiClient.clearToken();
+                                        window.location.reload();
+                                    }}
+                                    className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-colors"
+                                >
+                                    Logout
+                                </button>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
+                                    <h3 className="text-xl font-semibold mb-4">API Builder</h3>
+                                    <p className="text-gray-400 mb-4">Create and deploy APIs with AI assistance</p>
+                                    <button className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors">
+                                        Start Building
+                                    </button>
+                                </div>
+                                
+                                <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
+                                    <h3 className="text-xl font-semibold mb-4">Analytics</h3>
+                                    <p className="text-gray-400 mb-4">Monitor your API performance and usage</p>
+                                    <button className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-colors">
+                                        View Analytics
+                                    </button>
+                                </div>
+                                
+                                <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
+                                    <h3 className="text-xl font-semibold mb-4">Documentation</h3>
+                                    <p className="text-gray-400 mb-4">Learn how to use the API Maker Engine</p>
+                                    <button className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg transition-colors">
+                                        Read Docs
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div className="mt-8 bg-gray-800/50 p-6 rounded-xl border border-gray-700">
+                                <h3 className="text-xl font-semibold mb-4">Quick Start</h3>
+                                <ol className="list-decimal list-inside space-y-2 text-gray-300">
+                                    <li>Click "API Builder" to create your first API</li>
+                                    <li>Describe what you want your API to do using natural language</li>
+                                    <li>Let AI generate the code for you</li>
+                                    <li>Configure rate limits and authentication</li>
+                                    <li>Deploy and test your API instantly</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+        
+        // Render the app
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(
+            <AuthProvider>
+                <App />
+            </AuthProvider>
+        );
+    </script>
+</body>
+</html>

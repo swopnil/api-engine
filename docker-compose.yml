@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  api-maker:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DOCKER_ENV=true
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key-change-in-production}
+    volumes:
+      - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./templates:/app/templates
+      - ./static:/app/static
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - api-maker-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - api-maker-network
+    command: redis-server --appendonly yes
+
+networks:
+  api-maker-network:
+    driver: bridge
+
+volumes:
+  redis_data:
+
